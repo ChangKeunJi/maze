@@ -12,13 +12,20 @@
 
 // -- Boiler Plate Starts --
 
-const { Engine, Render, Runner, World, Bodies } = Matter;
+const { Engine, Render, Runner, World, Bodies, Body, Events } = Matter;
 
-const width = 600;
-const height = 600;
-const cells = 3;
+const cellsHorizontal = 6;
+const cellsVertical = 4;
+
+const width = window.innerWidth;
+const height = window.innerHeight;
+
+const unitLengthX = width / cellsHorizontal;
+const unitLengthY = height / cellsVertical;
 
 const engine = Engine.create();
+engine.world.gravity.y = 0;
+// Remove ball's gravity or entire things
 const { world } = engine;
 // World is created along with Engine instance
 
@@ -26,7 +33,7 @@ const render = Render.create({
   element: document.body,
   engine: engine,
   options: {
-    wireframes: true,
+    wireframes: false,
     width,
     height,
   },
@@ -40,10 +47,10 @@ Runner.run(Runner.create(), engine);
 // Walls
 
 const walls = [
-  Bodies.rectangle(width / 2, 0, width, 40, { isStatic: true }),
-  Bodies.rectangle(width / 2, height, width, 40, { isStatic: true }),
-  Bodies.rectangle(0, height / 2, 40, height, { isStatic: true }),
-  Bodies.rectangle(width, height / 2, 40, height, { isStatic: true }),
+  Bodies.rectangle(width / 2, 0, width, 2, { isStatic: true }),
+  Bodies.rectangle(width / 2, height, width, 2, { isStatic: true }),
+  Bodies.rectangle(0, height / 2, 2, height, { isStatic: true }),
+  Bodies.rectangle(width, height / 2, 2, height, { isStatic: true }),
 ];
 
 World.add(world, walls);
@@ -79,30 +86,221 @@ grid2[0].push(true);
 // Single array in memory placed at every index.
 // Change one array results every array
 
-const grid = Array(cells)
+const grid = Array(cellsVertical)
   .fill(null)
-  .map(() => Array(cells).fill(false));
+  .map(() => Array(cellsHorizontal).fill(false));
 
-const verticals = Array(cells)
+// [f,f,f]
+// [f,f,f]
+// [f,f,f]
+
+const verticals = Array(cellsVertical)
   .fill(null)
-  .map(() => Array(cells - 1).fill(false));
+  .map(() => Array(cellsHorizontal - 1).fill(false));
 
-const horizontals = Array(cells - 1)
+// [f,f]
+// [f,f]
+// [f,f]
+
+const horizontals = Array(cellsVertical - 1)
   .fill(null)
-  .map(() => Array(cells).fill(false));
+  .map(() => Array(cellsHorizontal).fill(false));
+// [f,f,f]
+// [f,f,f]
 
-const startRow = Math.floor(Math.random() * cells);
-const startColumn = Math.floor(Math.random() * cells);
+const startRow = Math.floor(Math.random() * cellsVertical);
+const startColumn = Math.floor(Math.random() * cellsHorizontal);
+
+const shuffle = (arr) => {
+  let counter = arr.length;
+
+  while (counter > 0) {
+    const index = Math.floor(Math.random() * counter);
+
+    counter--;
+
+    const temp = arr[counter];
+    arr[counter] = arr[index];
+    arr[index] = temp;
+  }
+
+  return arr;
+};
 
 const stepThroughCell = (row, column) => {
   // If I have visited the cell at [row,col], then return
+
+  if (grid[row][column]) return;
+
   // Mark this cell as being visited. F => T
+
+  grid[row][column] = true;
+
   // Assemble randomly-ordered list of neighbors
+
+  const neighbors = shuffle([
+    [row - 1, column, "up"],
+    [row, column + 1, "right"],
+    [row + 1, column, "down"],
+    [row, column - 1, "left"],
+  ]);
+
   // == For each neighbor... ==
-  // See if that neighbor is out of bounds
-  // If we have visited that neighbor, continue to next neigbor
-  // Remove a wall from either horizontals or verticals
+
+  for (let neigbor of neighbors) {
+    const [nextRow, nextColumn, direction] = neigbor;
+
+    // See if that neighbor is out of bounds
+
+    if (
+      nextRow < 0 ||
+      nextRow >= cellsVertical ||
+      nextColumn < 0 ||
+      nextColumn >= cellsHorizontal
+    ) {
+      continue; // Move to next iteration
+    }
+
+    // If we have visited that neighbor, continue to next neigbor
+
+    if (grid[nextRow][nextColumn]) continue;
+
+    // Remove a wall from either horizontals or verticals
+
+    if (direction === "left") {
+      verticals[row][column - 1] = true;
+    } else if (direction === "right") {
+      verticals[row][column] = true;
+    } else if (direction === "up") {
+      horizontals[row - 1][column] = true;
+    } else if (direction === "down") {
+      horizontals[row][column] = true;
+    }
+
+    stepThroughCell(nextRow, nextColumn);
+  }
   // Visit that next cell
 };
 
 stepThroughCell(startRow, startColumn);
+
+horizontals.forEach((row, rowIndex) => {
+  // console.log(row);
+
+  row.forEach((open, columnIndex) => {
+    if (open) return;
+
+    const wall = Bodies.rectangle(
+      columnIndex * unitLengthX + unitLengthX / 2,
+      rowIndex * unitLengthY + unitLengthY,
+      unitLengthX,
+      3,
+      {
+        label: "wall",
+        isStatic: true,
+        render: { fillStyle: "red" },
+      }
+    );
+
+    World.add(world, wall);
+  });
+});
+
+verticals.forEach((row, rowIndex) => {
+  row.forEach((open, columnIndex) => {
+    if (open) return;
+
+    const wall = Bodies.rectangle(
+      columnIndex * unitLengthX + unitLengthX,
+      rowIndex * unitLengthY + unitLengthY / 2,
+      3,
+      unitLengthY,
+      {
+        isStatic: true,
+        label: "wall",
+        render: { fillStyle: "red" },
+      }
+    );
+
+    World.add(world, wall);
+  });
+});
+
+//! Goal
+
+const goal = Bodies.rectangle(
+  // unitLength * (cells - 1) + unitLength / 2,
+  // unitLength * (cells - 1) + unitLength / 2,
+  width - unitLengthX / 2,
+  height - unitLengthY / 2,
+  unitLengthX * 0.7,
+  unitLengthY * 0.7,
+  { isStatic: true, label: "goal", render: { fillStyle: "green" } }
+);
+
+World.add(world, goal);
+
+//! Ball
+
+const ballRadious = Math.min(unitLengthX, unitLengthY) / 4;
+
+const ball = Bodies.circle(unitLengthX / 2, unitLengthY / 2, ballRadious, {
+  label: "ball",
+  render: { fillStyle: "blue" },
+});
+
+World.add(world, ball);
+
+document.addEventListener("keydown", (e) => {
+  const { x, y } = ball.velocity;
+
+  // console.log(x, y);
+
+  if (e.keyCode === 87) {
+    Body.setVelocity(ball, { x: x, y: y - 5 });
+  }
+
+  if (e.keyCode === 68) {
+    Body.setVelocity(ball, { x: x + 5, y: y });
+  }
+
+  if (e.keyCode === 83) {
+    Body.setVelocity(ball, { x: x, y: y + 5 });
+  }
+
+  if (e.keyCode === 65) {
+    Body.setVelocity(ball, { x: x - 5, y: y });
+  }
+});
+
+//! Win condition
+
+Events.on(engine, "collisionStart", (e) => {
+  e.pairs.forEach((collision) => {
+    const labels = ["ball", "goal"];
+
+    // if (collision.bodyA.label === "goal" && collision.bodyB.label === "ball") {
+    //   console.log("User won!");
+    // }
+
+    if (
+      labels.includes(collision.bodyA.label) &&
+      labels.includes(collision.bodyB.label)
+    ) {
+      console.log("User won!");
+      engine.world.gravity.y = 1;
+
+      world.bodies.forEach((body) => {
+        if (body.label === "wall") {
+          Body.setStatic(body, false);
+        }
+      });
+
+      document.querySelector(".winner").classList.remove("hidden");
+    }
+  });
+});
+
+// There is only one event object exists. It gets reused every time events occur.
+
+// After run the callback functions, Properties of event object get removed.
